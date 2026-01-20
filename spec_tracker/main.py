@@ -34,9 +34,9 @@ class Colors:
 def build_github_urls(branch_or_tag: str = "main") -> tuple[str, str]:
     """Build GitHub raw URLs for the specified branch or tag."""
     base_url = f"https://raw.githubusercontent.com/a2aproject/A2A/{branch_or_tag}"
-    json_url = f"{base_url}/specification/json/a2a.json"
+    proto_url = f"{base_url}/specification/grpc/a2a.proto"
     md_url = f"{base_url}/docs/specification.md"
-    return json_url, md_url
+    return proto_url, md_url
 
 
 def main():
@@ -52,6 +52,9 @@ Examples:
   %(prog)s --verbose                          # Enable detailed logging
   %(prog)s --json-export results.json        # Export JSON data
   %(prog)s --summary-only                     # Generate summary report only
+
+Note: This tool now uses a2a.proto as the source of truth instead of JSON schema.
+      Current spec files expected: current_spec/a2a.proto and current_spec/specification.md
         """,
     )
     parser.add_argument(
@@ -60,7 +63,7 @@ Examples:
         dest="branch",
         help='GitHub branch or tag to compare against (e.g., "main", "v1.2.0", "dev"). Defaults to main.',
     )
-    parser.add_argument("--json-url", help="URL for JSON schema (overrides --branch if specified)")
+    parser.add_argument("--proto-url", help="URL for proto file (overrides --branch if specified)")
     parser.add_argument("--md-url", help="URL for Markdown spec (overrides --branch if specified)")
     parser.add_argument(
         "--output",
@@ -71,13 +74,13 @@ Examples:
     parser.add_argument("--summary-only", action="store_true", help="Generate only a concise summary report")
     parser.add_argument(
         "--current-md",
-        help="Path to current markdown spec file (default: current_spec/A2A_SPECIFICATION.md)",
-        default="current_spec/A2A_SPECIFICATION.md",
+        help="Path to current markdown spec file (default: current_spec/specification.md)",
+        default="current_spec/specification.md",
     )
     parser.add_argument(
-        "--current-json",
-        help="Path to current JSON schema file (default: current_spec/a2a_schema.json)",
-        default="current_spec/a2a_schema.json",
+        "--current-proto",
+        help="Path to current proto file (default: current_spec/a2a.proto)",
+        default="current_spec/a2a.proto",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument("--dry-run", action="store_true", help="Perform analysis without saving reports")
@@ -93,32 +96,32 @@ Examples:
         logger.info("🚀 Starting A2A Specification Change Analysis")
 
         # Determine URLs to use
-        if args.json_url and args.md_url:
+        if args.proto_url and args.md_url:
             # Custom URLs provided
-            json_url = args.json_url
+            proto_url = args.proto_url
             md_url = args.md_url
             source_ref = "custom URLs"
         elif args.branch:
             # Branch/tag specified
-            json_url, md_url = build_github_urls(args.branch)
+            proto_url, md_url = build_github_urls(args.branch)
             source_ref = args.branch
             logger.info(f"📍 Comparing against branch/tag: {args.branch}")
         else:
             # Default to main branch
-            json_url, md_url = build_github_urls("main")
+            proto_url, md_url = build_github_urls("main")
             source_ref = "main"
 
         # Step 1: Download latest specs
         logger.info(f"📥 Downloading specifications from {source_ref}...")
         if args.verbose:
-            logger.info(f"📄 JSON URL: {json_url}")
+            logger.info(f"📄 Proto URL: {proto_url}")
             logger.info(f"📄 MD URL: {md_url}")
 
         downloader = SpecDownloader()
 
         try:
-            new_json, new_md = downloader.download_spec(json_url, md_url)
-            logger.info(f"✅ Downloaded specifications: {len(new_json)} JSON definitions, {len(new_md)} chars markdown")
+            new_proto, new_md = downloader.download_spec(proto_url, md_url)
+            logger.info(f"✅ Downloaded specifications: {len(new_proto)} chars proto, {len(new_md)} chars markdown")
         except Exception as e:
             logger.error(f"❌ Failed to download specifications: {e}")
             logger.info("💡 Check your internet connection and URLs")
@@ -133,27 +136,27 @@ Examples:
             if not Path(args.current_md).exists():
                 logger.error(f"❌ Current markdown spec not found: {args.current_md}")
                 return 1
-            if not Path(args.current_json).exists():
-                logger.error(f"❌ Current JSON schema not found: {args.current_json}")
+            if not Path(args.current_proto).exists():
+                logger.error(f"❌ Current proto file not found: {args.current_proto}")
                 return 1
 
             with open(args.current_md, "r", encoding="utf-8") as f:
                 current_md = f.read()
-            with open(args.current_json, "r", encoding="utf-8") as f:
-                current_json = json.load(f)
+            with open(args.current_proto, "r", encoding="utf-8") as f:
+                current_proto = f.read()
 
             current_spec = {
                 "markdown": spec_parser.parse_markdown(current_md),
-                "json": spec_parser.parse_json_schema(current_json),
+                "proto": spec_parser.parse_proto(current_proto),
             }
 
-            new_spec = {"markdown": spec_parser.parse_markdown(new_md), "json": spec_parser.parse_json_schema(new_json)}
+            new_spec = {"markdown": spec_parser.parse_markdown(new_md), "proto": spec_parser.parse_proto(new_proto)}
 
             logger.info(
-                f"✅ Parsed current spec: {len(current_spec['markdown']['requirements'])} requirements, {len(current_spec['json']['definitions'])} definitions"
+                f"✅ Parsed current spec: {len(current_spec['markdown']['requirements'])} requirements, {len(current_spec['proto']['messages'])} proto messages"
             )
             logger.info(
-                f"✅ Parsed new spec: {len(new_spec['markdown']['requirements'])} requirements, {len(new_spec['json']['definitions'])} definitions"
+                f"✅ Parsed new spec: {len(new_spec['markdown']['requirements'])} requirements, {len(new_spec['proto']['messages'])} proto messages"
             )
 
         except Exception as e:

@@ -43,19 +43,19 @@ class SpecParser:
         }
         return result
 
-    def parse_json_schema(self, schema: dict) -> Dict[str, Any]:
+    def parse_proto(self, content: str) -> Dict[str, Any]:
         """
-        Parse JSON schema to extract structure and requirements.
+        Parse proto file to extract structure and definitions.
 
         Returns:
-            Dict with definitions, required fields, and types
+            Dict with messages, services, enums, and fields
         """
         result = {
-            "definitions": self._extract_definitions(schema),
-            "required_fields": self._extract_required_fields(schema),
-            "error_codes": self._extract_error_codes(schema),
-            "methods": self._extract_methods(schema),
-            "schema_info": self._extract_schema_info(schema),
+            "messages": self._extract_proto_messages(content),
+            "services": self._extract_proto_services(content),
+            "enums": self._extract_proto_enums(content),
+            "package": self._extract_proto_package(content),
+            "imports": self._extract_proto_imports(content),
         }
         return result
 
@@ -87,26 +87,6 @@ class SpecParser:
                     required_fields[def_name] = required
 
         return required_fields
-
-    def _extract_error_codes(self, schema: dict) -> Dict[str, Any]:
-        """Extract error codes and their definitions."""
-        definitions = schema.get("definitions", {})
-        error_codes = {}
-
-        # Look for error-related definitions
-        for def_name, def_content in definitions.items():
-            if "Error" in def_name:
-                properties = def_content.get("properties", {})
-                if "code" in properties:
-                    code_def = properties["code"]
-                    if "const" in code_def:
-                        error_codes[def_name] = {
-                            "code": code_def["const"],
-                            "description": def_content.get("description", ""),
-                            "message": properties.get("message", {}).get("const", ""),
-                        }
-
-        return error_codes
 
     def _extract_methods(self, schema: dict) -> Dict[str, Any]:
         """Extract method signatures from request/response definitions."""
@@ -225,3 +205,138 @@ class SpecParser:
             structure["section_hierarchy"][level].append(section["title"])
 
         return structure
+
+    def _extract_proto_package(self, content: str) -> str:
+        """Extract package declaration from proto file."""
+        package_pattern = re.compile(r"^\s*package\s+([a-zA-Z0-9_.]+)\s*;", re.MULTILINE)
+        match = package_pattern.search(content)
+        return match.group(1) if match else ""
+
+    def _extract_proto_imports(self, content: str) -> List[str]:
+        """Extract import statements from proto file."""
+        import_pattern = re.compile(r'^\s*import\s+"([^"]+)"\s*;', re.MULTILINE)
+        return [match.group(1) for match in import_pattern.finditer(content)]
+
+    def _extract_proto_messages(self, content: str) -> Dict[str, Any]:
+        """Extract message definitions from proto file."""
+        messages = {}
+
+        # Pattern to match message blocks
+        message_pattern = re.compile(
+            r'^\s*message\s+(\w+)\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}',
+            re.MULTILINE | re.DOTALL
+        )
+
+        for match in message_pattern.finditer(content):
+            message_name = match.group(1)
+            message_body = match.group(2)
+
+            messages[message_name] = {
+                "fields": self._extract_proto_fields(message_body),
+                "nested_messages": [],  # Could be enhanced to parse nested messages
+            }
+
+        return messages
+
+    def _extract_proto_fields(self, message_body: str) -> List[Dict[str, Any]]:
+        """Extract fields from a message body."""
+        fields = []
+
+        # Pattern to match field definitions
+        field_pattern = re.compile(
+            r'^\s*(optional|required|repeated)?\s*(\w+)\s+(\w+)\s*=\s*(\d+)',
+            re.MULTILINE
+        )
+
+        for match in field_pattern.finditer(message_body):
+            label = match.group(1) or "optional"
+            field_type = match.group(2)
+            field_name = match.group(3)
+            field_number = match.group(4)
+
+            fields.append({
+                "name": field_name,
+                "type": field_type,
+                "label": label,
+                "number": int(field_number),
+            })
+
+        return fields
+
+    def _extract_proto_services(self, content: str) -> Dict[str, Any]:
+        """Extract service definitions from proto file."""
+        services = {}
+
+        # Pattern to match service blocks
+        service_pattern = re.compile(
+            r'^\s*service\s+(\w+)\s*\{([^}]+)\}',
+            re.MULTILINE | re.DOTALL
+        )
+
+        for match in service_pattern.finditer(content):
+            service_name = match.group(1)
+            service_body = match.group(2)
+
+            services[service_name] = {
+                "methods": self._extract_proto_rpc_methods(service_body),
+            }
+
+        return services
+
+    def _extract_proto_rpc_methods(self, service_body: str) -> List[Dict[str, Any]]:
+        """Extract RPC methods from a service body."""
+        methods = []
+
+        # Pattern to match RPC method definitions
+        rpc_pattern = re.compile(
+            r'^\s*rpc\s+(\w+)\s*\(\s*(?:stream\s+)?(\w+)\s*\)\s*returns\s*\(\s*(?:stream\s+)?(\w+)\s*\)',
+            re.MULTILINE
+        )
+
+        for match in rpc_pattern.finditer(service_body):
+            method_name = match.group(1)
+            request_type = match.group(2)
+            response_type = match.group(3)
+
+            # Check for streaming
+            full_match = match.group(0)
+            request_streaming = "stream" in full_match.split("returns")[0]
+            response_streaming = "stream" in full_match.split("returns")[1]
+
+            methods.append({
+                "name": method_name,
+                "request_type": request_type,
+                "response_type": response_type,
+                "request_streaming": request_streaming,
+                "response_streaming": response_streaming,
+            })
+
+        return methods
+
+    def _extract_proto_enums(self, content: str) -> Dict[str, Any]:
+        """Extract enum definitions from proto file."""
+        enums = {}
+
+        # Pattern to match enum blocks
+        enum_pattern = re.compile(
+            r'^\s*enum\s+(\w+)\s*\{([^}]+)\}',
+            re.MULTILINE | re.DOTALL
+        )
+
+        for match in enum_pattern.finditer(content):
+            enum_name = match.group(1)
+            enum_body = match.group(2)
+
+            # Extract enum values
+            value_pattern = re.compile(r'^\s*(\w+)\s*=\s*(\d+)', re.MULTILINE)
+            values = []
+
+            for value_match in value_pattern.finditer(enum_body):
+                values.append({
+                    "name": value_match.group(1),
+                    "number": int(value_match.group(2)),
+                })
+
+            enums[enum_name] = {"values": values}
+
+        return enums

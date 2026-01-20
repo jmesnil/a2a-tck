@@ -15,18 +15,21 @@ class SpecComparator:
         Compare two specification versions.
 
         Args:
-            old_spec: Dict with 'markdown' and 'json' parsed specs
-            new_spec: Dict with 'markdown' and 'json' parsed specs
+            old_spec: Dict with 'markdown' and 'proto' parsed specs
+            new_spec: Dict with 'markdown' and 'proto' parsed specs
 
         Returns:
             Dict with added, removed, and modified elements
         """
         comparison = {
             "markdown_changes": self._compare_markdown(old_spec.get("markdown", {}), new_spec.get("markdown", {})),
-            "json_changes": self._compare_json(old_spec.get("json", {}), new_spec.get("json", {})),
+            "proto_changes": self._compare_proto(old_spec.get("proto", {}), new_spec.get("proto", {})),
             "summary": {},
             "impact_classification": {},
         }
+
+        # Keep json_changes as alias to proto_changes for backward compatibility
+        comparison["json_changes"] = comparison["proto_changes"]
 
         # Generate summary
         comparison["summary"] = self._generate_summary(comparison)
@@ -45,89 +48,30 @@ class SpecComparator:
             "behavioral_changes": [],
         }
 
-        # Analyze JSON changes for breaking changes
-        json_changes = comparison["json_changes"]
-
-        # Breaking: Removed required fields
-        for change in json_changes["required_fields"]["removed"]:
-            classification["breaking_changes"].append(
-                {
-                    "type": "required_field_removed",
-                    "object": change["object"],
-                    "fields": change["fields"],
-                    "impact": "Client code using these fields will break",
-                }
-            )
-
-        # Breaking: Removed required fields from existing objects
-        for change in json_changes["required_fields"]["modified"]:
-            if change["removed_fields"]:
-                classification["breaking_changes"].append(
-                    {
-                        "type": "required_field_removed_from_object",
-                        "object": change["object"],
-                        "removed_fields": change["removed_fields"],
-                        "impact": "Client code expecting these fields will break",
-                    }
-                )
+        proto_changes = comparison["proto_changes"]
 
         # Breaking: Removed methods
-        for change in json_changes["methods"]["removed"]:
+        for change in proto_changes["methods"]["removed"]:
             classification["breaking_changes"].append(
                 {"type": "method_removed", "method": change["name"], "impact": "Client code calling this method will break"}
             )
 
         # Breaking: Removed definitions
-        for change in json_changes["definitions"]["removed"]:
+        for change in proto_changes["definitions"]["removed"]:
             classification["breaking_changes"].append(
                 {"type": "definition_removed", "definition": change["name"], "impact": "Client code using this type will break"}
             )
 
-        # Breaking: Modified error codes
-        for change in json_changes["error_codes"]["modified"]:
-            classification["breaking_changes"].append(
-                {
-                    "type": "error_code_changed",
-                    "error": change["name"],
-                    "old_code": change["old_info"].get("code"),
-                    "new_code": change["new_info"].get("code"),
-                    "impact": "Client error handling code may break",
-                }
-            )
-
         # Non-breaking: Added methods
-        for change in json_changes["methods"]["added"]:
+        for change in proto_changes["methods"]["added"]:
             classification["non_breaking_additions"].append(
                 {"type": "method_added", "method": change["name"], "impact": "New functionality available"}
             )
 
-        # Non-breaking: Added optional fields
-        for change in json_changes["required_fields"]["modified"]:
-            if change["added_fields"]:
-                classification["non_breaking_additions"].append(
-                    {
-                        "type": "required_field_added",
-                        "object": change["object"],
-                        "added_fields": change["added_fields"],
-                        "impact": "New required fields - servers must implement",
-                    }
-                )
-
         # Non-breaking: Added definitions
-        for change in json_changes["definitions"]["added"]:
+        for change in proto_changes["definitions"]["added"]:
             classification["non_breaking_additions"].append(
                 {"type": "definition_added", "definition": change["name"], "impact": "New types available for use"}
-            )
-
-        # Non-breaking: Added error codes
-        for change in json_changes["error_codes"]["added"]:
-            classification["non_breaking_additions"].append(
-                {
-                    "type": "error_code_added",
-                    "error": change["name"],
-                    "code": change["error_info"].get("code"),
-                    "impact": "New error condition defined",
-                }
             )
 
         # Analyze requirement changes
@@ -209,10 +153,6 @@ class SpecComparator:
             "sections": {"added": [], "removed": [], "modified": []},
         }
 
-        # Compare requirements
-        old_reqs = {r.id: r for r in old_md.get("requirements", [])}
-        new_reqs = {r.id: r for r in new_md.get("requirements", [])}
-
         # Since requirement IDs are auto-generated, compare by content
         old_req_texts = {r.text: r for r in old_md.get("requirements", [])}
         new_req_texts = {r.text: r for r in new_md.get("requirements", [])}
@@ -262,105 +202,122 @@ class SpecComparator:
 
         return changes
 
-    def _compare_json(self, old_json: Dict, new_json: Dict) -> Dict[str, Any]:
-        """Compare JSON schema specifications."""
+    def _compare_proto(self, old_proto: Dict, new_proto: Dict) -> Dict[str, Any]:
+        """Compare proto specifications."""
+
         changes = {
-            "definitions": {"added": [], "removed": [], "modified": []},
-            "error_codes": {"added": [], "removed": [], "modified": []},
+            "messages": {"added": [], "removed": [], "modified": []},
+            "services": {"added": [], "removed": [], "modified": []},
+            "enums": {"added": [], "removed": [], "modified": []},
             "methods": {"added": [], "removed": [], "modified": []},
-            "required_fields": {"added": [], "removed": [], "modified": []},
+            "definitions": {"added": [], "removed": [], "modified": []},  # Alias for messages
         }
 
-        # Compare definitions
-        old_defs = old_json.get("definitions", {})
-        new_defs = new_json.get("definitions", {})
+        # Compare messages
+        old_messages = old_proto.get("messages", {})
+        new_messages = new_proto.get("messages", {})
 
-        # Added definitions
-        for def_name in new_defs:
-            if def_name not in old_defs:
-                changes["definitions"]["added"].append({"name": def_name, "definition": new_defs[def_name]})
+        for msg_name in new_messages:
+            if msg_name not in old_messages:
+                changes["messages"]["added"].append({"name": msg_name, "message": new_messages[msg_name]})
+                changes["definitions"]["added"].append({"name": msg_name, "definition": new_messages[msg_name]})
 
-        # Removed definitions
-        for def_name in old_defs:
-            if def_name not in new_defs:
-                changes["definitions"]["removed"].append({"name": def_name, "definition": old_defs[def_name]})
+        for msg_name in old_messages:
+            if msg_name not in new_messages:
+                changes["messages"]["removed"].append({"name": msg_name, "message": old_messages[msg_name]})
+                changes["definitions"]["removed"].append({"name": msg_name, "definition": old_messages[msg_name]})
 
-        # Modified definitions
-        for def_name in old_defs:
-            if def_name in new_defs:
-                old_def = old_defs[def_name]
-                new_def = new_defs[def_name]
-
-                # Use DeepDiff for detailed comparison
-                diff = DeepDiff(old_def, new_def, ignore_order=True)
+        for msg_name in old_messages:
+            if msg_name in new_messages:
+                diff = DeepDiff(old_messages[msg_name], new_messages[msg_name], ignore_order=True)
                 if diff:
-                    changes["definitions"]["modified"].append(
-                        {"name": def_name, "old_definition": old_def, "new_definition": new_def, "diff": diff}
-                    )
+                    changes["messages"]["modified"].append({
+                        "name": msg_name,
+                        "old_message": old_messages[msg_name],
+                        "new_message": new_messages[msg_name],
+                        "diff": diff
+                    })
+                    changes["definitions"]["modified"].append({
+                        "name": msg_name,
+                        "old_definition": old_messages[msg_name],
+                        "new_definition": new_messages[msg_name],
+                        "diff": diff
+                    })
 
-        # Compare error codes
-        old_errors = old_json.get("error_codes", {})
-        new_errors = new_json.get("error_codes", {})
+        # Compare services and extract methods
+        old_services = old_proto.get("services", {})
+        new_services = new_proto.get("services", {})
 
-        for error_name in new_errors:
-            if error_name not in old_errors:
-                changes["error_codes"]["added"].append({"name": error_name, "error_info": new_errors[error_name]})
+        # Collect all methods from all services
+        old_methods_map = {}
+        new_methods_map = {}
 
-        for error_name in old_errors:
-            if error_name not in new_errors:
-                changes["error_codes"]["removed"].append({"name": error_name, "error_info": old_errors[error_name]})
+        for svc_name, svc_info in old_services.items():
+            for method in svc_info.get("methods", []):
+                old_methods_map[method["name"]] = method
 
-        for error_name in old_errors:
-            if error_name in new_errors:
-                if old_errors[error_name] != new_errors[error_name]:
-                    changes["error_codes"]["modified"].append(
-                        {"name": error_name, "old_info": old_errors[error_name], "new_info": new_errors[error_name]}
-                    )
+        for svc_name, svc_info in new_services.items():
+            for method in svc_info.get("methods", []):
+                new_methods_map[method["name"]] = method
 
         # Compare methods
-        old_methods = old_json.get("methods", {})
-        new_methods = new_json.get("methods", {})
+        for method_name in new_methods_map:
+            if method_name not in old_methods_map:
+                changes["methods"]["added"].append({"name": method_name, "method_info": new_methods_map[method_name]})
 
-        for method_name in new_methods:
-            if method_name not in old_methods:
-                changes["methods"]["added"].append({"name": method_name, "method_info": new_methods[method_name]})
+        for method_name in old_methods_map:
+            if method_name not in new_methods_map:
+                changes["methods"]["removed"].append({"name": method_name, "method_info": old_methods_map[method_name]})
 
-        for method_name in old_methods:
-            if method_name not in new_methods:
-                changes["methods"]["removed"].append({"name": method_name, "method_info": old_methods[method_name]})
+        for method_name in old_methods_map:
+            if method_name in new_methods_map:
+                if old_methods_map[method_name] != new_methods_map[method_name]:
+                    changes["methods"]["modified"].append({
+                        "name": method_name,
+                        "old_info": old_methods_map[method_name],
+                        "new_info": new_methods_map[method_name]
+                    })
 
-        for method_name in old_methods:
-            if method_name in new_methods:
-                if old_methods[method_name] != new_methods[method_name]:
-                    changes["methods"]["modified"].append(
-                        {"name": method_name, "old_info": old_methods[method_name], "new_info": new_methods[method_name]}
-                    )
+        # Compare services
+        for svc_name in new_services:
+            if svc_name not in old_services:
+                changes["services"]["added"].append({"name": svc_name, "service": new_services[svc_name]})
 
-        # Compare required fields
-        old_required = old_json.get("required_fields", {})
-        new_required = new_json.get("required_fields", {})
+        for svc_name in old_services:
+            if svc_name not in new_services:
+                changes["services"]["removed"].append({"name": svc_name, "service": old_services[svc_name]})
 
-        for obj_name in new_required:
-            if obj_name not in old_required:
-                changes["required_fields"]["added"].append({"object": obj_name, "fields": new_required[obj_name]})
-            elif set(new_required[obj_name]) != set(old_required[obj_name]):
-                added_fields = set(new_required[obj_name]) - set(old_required[obj_name])
-                removed_fields = set(old_required[obj_name]) - set(new_required[obj_name])
+        for svc_name in old_services:
+            if svc_name in new_services:
+                diff = DeepDiff(old_services[svc_name], new_services[svc_name], ignore_order=True)
+                if diff:
+                    changes["services"]["modified"].append({
+                        "name": svc_name,
+                        "old_service": old_services[svc_name],
+                        "new_service": new_services[svc_name],
+                        "diff": diff
+                    })
 
-                if added_fields or removed_fields:
-                    changes["required_fields"]["modified"].append(
-                        {
-                            "object": obj_name,
-                            "added_fields": list(added_fields),
-                            "removed_fields": list(removed_fields),
-                            "old_fields": old_required[obj_name],
-                            "new_fields": new_required[obj_name],
-                        }
-                    )
+        # Compare enums
+        old_enums = old_proto.get("enums", {})
+        new_enums = new_proto.get("enums", {})
 
-        for obj_name in old_required:
-            if obj_name not in new_required:
-                changes["required_fields"]["removed"].append({"object": obj_name, "fields": old_required[obj_name]})
+        for enum_name in new_enums:
+            if enum_name not in old_enums:
+                changes["enums"]["added"].append({"name": enum_name, "enum": new_enums[enum_name]})
+
+        for enum_name in old_enums:
+            if enum_name not in new_enums:
+                changes["enums"]["removed"].append({"name": enum_name, "enum": old_enums[enum_name]})
+
+        for enum_name in old_enums:
+            if enum_name in new_enums:
+                if old_enums[enum_name] != new_enums[enum_name]:
+                    changes["enums"]["modified"].append({
+                        "name": enum_name,
+                        "old_enum": old_enums[enum_name],
+                        "new_enum": new_enums[enum_name]
+                    })
 
         return changes
 
@@ -389,8 +346,6 @@ class SpecComparator:
                 + len(json_changes["definitions"]["added"])
                 + len(json_changes["definitions"]["removed"])
                 + len(json_changes["definitions"]["modified"])
-                + len(json_changes["error_codes"]["added"])
-                + len(json_changes["error_codes"]["removed"])
                 + len(json_changes["methods"]["added"])
                 + len(json_changes["methods"]["removed"])
             ),

@@ -10,8 +10,32 @@ These scripts are intended to be run manually by TCK maintainers.
 
 Analyzes and reports the differences between the current baseline A2A specification and a target version (e.g., a branch or tag in the official repository). This is the first step in the specification update workflow.
 
+**Important Change**: This tool now uses **a2a.proto as the source of truth** instead of JSON schema.
+
 *   **Usage**: `util_scripts/check_spec_changes.py [options]`
-*   **Detailed Documentation**: See the [Specification Update Workflow](../docs/SPEC_UPDATE_WORKFLOW.md).
+*   **Current Spec Files Required**:
+    - `current_spec/a2a.proto` (proto specification - source of truth)
+    - `current_spec/specification.md` (markdown documentation)
+*   **Download Spec Files**: Run `./update_spec.sh` to download the latest specification files
+*   **Detailed Documentation**: See the [Specification Update Workflow](../docs/SPEC_UPDATE_WORKFLOW.md)
+*   **Architecture Decision**: See [ADR-003: Proto-First Code Generation](../docs/adrs/ADR-003-proto-first-code-generation.md)
+
+**Example Usage**:
+```bash
+# Compare current spec against main branch
+./util_scripts/check_spec_changes.py
+
+# Compare against specific branch
+./util_scripts/check_spec_changes.py --branch v1.2.0
+
+# Generate detailed report
+./util_scripts/check_spec_changes.py --output reports/analysis.md --verbose
+```
+
+The tool now:
+- Parses proto messages, services, RPC methods, and enums
+- Compares proto structures instead of JSON schema
+- Maintains backward compatibility with existing report formats
 
 ## Internal Modules
 
