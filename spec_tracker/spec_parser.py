@@ -206,6 +206,28 @@ class SpecParser:
 
         return structure
 
+    def generate_refs_file(self, markdown_content: Dict[str, Any], output_path: str = "reports/refs.txt") -> None:
+        """
+        Generate a reference file containing only the headings from specification.md.
+
+        Args:
+            markdown_content: The content of specification.md
+            output_path: Path where to save the refs.txt file
+        """
+        from pathlib import Path
+
+        sections = markdown_content["sections"]
+        
+        # Ensure parent directory exists
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write headings to file
+        with open(output_file, "w", encoding="utf-8") as f:
+            for section in sections:
+                f.write("#" * section["level"] + " " + section["title"] + "\n")
+            f.write("\n")  # Add final newline
+
     def _extract_proto_package(self, content: str) -> str:
         """Extract package declaration from proto file."""
         package_pattern = re.compile(r"^\s*package\s+([a-zA-Z0-9_.]+)\s*;", re.MULTILINE)

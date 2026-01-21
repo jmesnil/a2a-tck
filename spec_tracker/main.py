@@ -52,6 +52,7 @@ Examples:
   %(prog)s --verbose                          # Enable detailed logging
   %(prog)s --json-export results.json        # Export JSON data
   %(prog)s --summary-only                     # Generate summary report only
+  %(prog)s --generate-refs                    # Generate spec_tracker/specs/refs.txt and exit
 
 Note: This tool now uses a2a.proto as the source of truth instead of JSON schema.
       Current spec files expected: current_spec/a2a.proto and current_spec/specification.md
@@ -84,6 +85,11 @@ Note: This tool now uses a2a.proto as the source of truth instead of JSON schema
     )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument("--dry-run", action="store_true", help="Perform analysis without saving reports")
+    parser.add_argument(
+        "--generate-refs",
+        action="store_true",
+        help="Generate spec_tracker/specs/refs.txt from current specification.md and exit"
+    )
 
     args = parser.parse_args()
 
@@ -91,6 +97,42 @@ Note: This tool now uses a2a.proto as the source of truth instead of JSON schema
     log_level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logger = logging.getLogger(__name__)
+
+    # Handle --generate-refs option
+    if args.generate_refs:
+        try:
+            logger.info("📝 Generating refs.txt from current specification.md")
+
+            if not Path(args.current_md).exists():
+                logger.error(f"❌ Current markdown spec not found: {args.current_md}")
+                return 1
+
+            with open(args.current_md, "r", encoding="utf-8") as f:
+                current_md = f.read()
+
+            spec_parser = SpecParser()
+            output_path = "spec_tracker/specs/refs.txt"
+            spec_parser.generate_refs_file(current_md, output_path)
+
+            logger.info(f"✅ Successfully generated {output_path}")
+
+            # Show a preview of the file
+            headings = spec_parser.extract_headings(current_md)
+            logger.info(f"📋 Generated {len(headings)} headings")
+            if headings:
+                logger.info(f"📄 First few headings:")
+                for heading in headings[:5]:
+                    logger.info(f"   {heading}")
+                if len(headings) > 5:
+                    logger.info(f"   ... and {len(headings) - 5} more")
+
+            return 0
+        except Exception as e:
+            logger.error(f"❌ Failed to generate refs.txt: {e}")
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
+            return 1
 
     try:
         logger.info("🚀 Starting A2A Specification Change Analysis")
@@ -151,6 +193,8 @@ Note: This tool now uses a2a.proto as the source of truth instead of JSON schema
             }
 
             new_spec = {"markdown": spec_parser.parse_markdown(new_md), "proto": spec_parser.parse_proto(new_proto)}
+
+            spec_parser.generate_refs_file(new_spec["markdown"])
 
             logger.info(
                 f"✅ Parsed current spec: {len(current_spec['markdown']['requirements'])} requirements, {len(current_spec['proto']['messages'])} proto messages"

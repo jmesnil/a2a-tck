@@ -30,12 +30,16 @@ Analyzes and reports the differences between the current baseline A2A specificat
 
 # Generate detailed report
 ./util_scripts/check_spec_changes.py --output reports/analysis.md --verbose
+
+# Generate refs.txt file containing all headings from specification.md
+./util_scripts/check_spec_changes.py --generate-refs
 ```
 
 The tool now:
 - Parses proto messages, services, RPC methods, and enums
 - Compares proto structures instead of JSON schema
 - Maintains backward compatibility with existing report formats
+- Can generate a reference file (`spec_tracker/specs/refs.txt`) containing all headings from specification.md
 
 ## Internal Modules
 
