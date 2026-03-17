@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A2A TCK Architecture</title>
+<style>
+  :root {
+    --primary: #1a73e8;
+    --secondary: #34a853;
+    --accent: #ea4335;
+    --bg: #ffffff;
+    --text: #202124;
+    --muted: #5f6368;
+    --light-bg: #f8f9fa;
+    --border: #dadce0;
+    --code-bg: #1e1e2e;
+    --code-fg: #cdd6f4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #000; }
+
+  .deck { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    padding: 60px 80px;
+    background: var(--bg);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  .slide.active { opacity: 1; pointer-events: auto; }
+
+  .slide-number {
+    position: absolute; bottom: 24px; right: 40px;
+    font-size: 14px; color: var(--muted);
+  }
+
+  h1 { font-size: 48px; font-weight: 700; color: var(--text); margin-bottom: 12px; line-height: 1.15; }
+  h2 { font-size: 36px; font-weight: 600; color: var(--primary); margin-bottom: 24px; }
+  h3 { font-size: 24px; font-weight: 600; color: var(--text); margin-bottom: 12px; }
+  p, li { font-size: 22px; line-height: 1.6; color: var(--text); }
+  .subtitle { font-size: 26px; color: var(--muted); margin-bottom: 40px; }
+
+  ul { list-style: none; padding: 0; }
+  ul li { padding: 8px 0 8px 32px; position: relative; }
+  ul li::before { content: ""; position: absolute; left: 8px; top: 18px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; flex: 1; align-items: start; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 32px; flex: 1; align-items: start; }
+
+  .card {
+    background: var(--light-bg); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px;
+  }
+  .card h3 { font-size: 20px; margin-bottom: 8px; }
+  .card p, .card li { font-size: 18px; }
+  .card ul li::before { width: 8px; height: 8px; top: 16px; }
+
+  .highlight-card {
+    border-left: 4px solid var(--primary);
+    background: var(--light-bg);
+    padding: 20px 24px;
+    border-radius: 0 12px 12px 0;
+    margin-bottom: 16px;
+  }
+  .highlight-card.green { border-left-color: var(--secondary); }
+  .highlight-card.red { border-left-color: var(--accent); }
+
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    background: var(--code-bg); color: var(--code-fg);
+    padding: 2px 8px; border-radius: 4px; font-size: 0.85em;
+  }
+  pre {
+    background: var(--code-bg); color: var(--code-fg);
+    padding: 24px; border-radius: 12px; overflow-x: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 17px; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+
+  .diagram {
+    display: flex; align-items: center; justify-content: center;
+    gap: 16px; flex-wrap: wrap; padding: 20px 0;
+  }
+  .diagram .box {
+    background: var(--light-bg); border: 2px solid var(--primary);
+    border-radius: 12px; padding: 16px 24px; text-align: center;
+    font-size: 18px; font-weight: 600; color: var(--primary);
+    min-width: 140px;
+  }
+  .diagram .box.green { border-color: var(--secondary); color: var(--secondary); }
+  .diagram .box.red { border-color: var(--accent); color: var(--accent); }
+  .diagram .box.dark { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .diagram .box small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .diagram .box.dark small { color: #c5d4f0; }
+  .diagram .arrow { font-size: 28px; color: var(--muted); }
+  .diagram .arrow-down { font-size: 28px; color: var(--muted); writing-mode: vertical-lr; }
+
+  .tag {
+    display: inline-block; padding: 4px 12px; border-radius: 20px;
+    font-size: 14px; font-weight: 600; margin: 2px 4px;
+  }
+  .tag.must { background: #fce8e6; color: #c5221f; }
+  .tag.should { background: #fef7e0; color: #e37400; }
+  .tag.may { background: #e6f4ea; color: #137333; }
+
+  .step-list { counter-reset: step; }
+  .step-list li { counter-increment: step; padding-left: 48px; }
+  .step-list li::before {
+    content: counter(step); background: var(--primary); color: #fff;
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 700; left: 4px; top: 12px;
+  }
+
+  .title-slide { justify-content: center; align-items: center; text-align: center; }
+  .title-slide h1 { font-size: 56px; margin-bottom: 16px; }
+  .title-slide .subtitle { font-size: 28px; }
+
+  .flow-vertical { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .flow-vertical .arrow { writing-mode: horizontal-tb; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 19px; }
+  th { background: var(--primary); color: #fff; padding: 12px 16px; text-align: left; }
+  td { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  tr:nth-child(even) td { background: var(--light-bg); }
+
+  .controls {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 12px; z-index: 100;
+  }
+  .controls button {
+    background: var(--primary); color: #fff; border: none;
+    padding: 10px 20px; border-radius: 8px; font-size: 16px;
+    cursor: pointer; opacity: 0.8;
+  }
+  .controls button:hover { opacity: 1; }
+
+  .flex-1 { flex: 1; }
+  .mt-auto { margin-top: auto; }
+  .mb-16 { margin-bottom: 16px; }
+  .mb-24 { margin-bottom: 24px; }
+  .gap-16 > * + * { margin-top: 16px; }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+  <!-- Slide 1: Title -->
+  <div class="slide title-slide active">
+    <h1>A2A Protocol TCK</h1>
+    <p class="subtitle">Technology Compatibility Kit</p>
+    <p style="font-size:20px; color:var(--muted); margin-top:24px;">Architecture Overview &amp; SDK Integration Guide</p>
+    <div class="slide-number">1</div>
+  </div>
+
+  <!-- Slide 2: What is the TCK? -->
+  <div class="slide">
+    <h2>What is the A2A TCK?</h2>
+    <p class="subtitle" style="font-size:22px;">A conformance test suite that validates A2A protocol implementations</p>
+    <div class="two-col flex-1">
+      <div>
+        <div class="highlight-card mb-16">
+          <h3>Goal</h3>
+          <p>Ensure any A2A SDK correctly implements the protocol specification, regardless of language or framework.</p>
+        </div>
+        <div class="highlight-card green">
+          <h3>How</h3>
+          <p>Black-box testing: the TCK sends requests over the wire and validates responses against the spec.</p>
+        </div>
+      </div>
+      <div>
+        <h3 class="mb-16">Validates across 3 transports</h3>
+        <div class="card mb-16"><h3>gRPC</h3><p>Protobuf binary over HTTP/2</p></div>
+        <div class="card mb-16"><h3>JSON-RPC</h3><p>JSON-RPC 2.0 over HTTP</p></div>
+        <div class="card"><h3>HTTP+JSON</h3><p>RESTful HTTP with JSON payloads</p></div>
+      </div>
+    </div>
+    <div class="slide-number">2</div>
+  </div>
+
+  <!-- Slide 3: High-Level Architecture -->
+  <div class="slide">
+    <h2>High-Level Architecture</h2>
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+      <div class="diagram" style="gap:20px;">
+        <div style="display:flex; flex-direction:column; align-items:center; gap:12px;">
+          <div class="box dark">TCK Runner<small>run_tck.py</small></div>
+          <div class="arrow">&#9660;</div>
+          <div style="display:flex; gap:16px;">
+            <div class="box">gRPC<small>Client</small></div>
+            <div class="box">JSON-RPC<small>Client</small></div>
+            <div class="box">HTTP+JSON<small>Client</small></div>
+          </div>
+        </div>
+        <div class="arrow" style="font-size:48px;">&#10145;</div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:12px;">
+          <div class="box green" style="min-width:200px;">Your SUT<small>System Under Test</small></div>
+          <div class="arrow">&#9660;</div>
+          <div class="box green">Your A2A SDK<small>Java, Python, Go, ...</small></div>
+        </div>
+        <div class="arrow" style="font-size:48px;">&#11013;</div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:12px;">
+          <div class="box dark">Validators<small>per transport</small></div>
+          <div class="arrow">&#9660;</div>
+          <div class="box red">Reports<small>JSON, HTML, JUnit</small></div>
+        </div>
+      </div>
+      <div style="margin-top:40px; display:flex; gap:24px;">
+        <div class="highlight-card" style="flex:1;">
+          <p><strong>TCK side:</strong> Python + pytest, sends requests, validates responses against the spec, and generates compatibility reports.</p>
+        </div>
+        <div class="highlight-card green" style="flex:1;">
+          <p><strong>SDK side:</strong> A running agent that exposes an Agent Card and handles A2A operations.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-number">3</div>
+  </div>
+
+  <!-- Slide 4: Project Structure -->
+  <div class="slide">
+    <h2>Project Structure</h2>
+    <div class="two-col flex-1">
+      <pre><code>a2a-tck/
+  tck/
+    requirements/    # Requirement specs
+    transport/       # gRPC, JSON-RPC,
+                     # HTTP+JSON clients
+    validators/      # Response validators
+    reporting/       # Report generation
+
+  tests/
+    compatibility/   # Conformance tests
+      core_operations/
+      grpc/
+      jsonrpc/
+      http_json/
+
+  scenarios/         # Gherkin .feature files
+  codegen/           # SUT code generator
+  specification/     # A2A spec + schemas</code></pre>
+      <div class="gap-16">
+        <div class="card">
+          <h3>requirements/</h3>
+          <p>Central definitions: operations, transport bindings, error codes, task states. Each requirement has an ID, RFC 2119 level, and validators.</p>
+        </div>
+        <div class="card">
+          <h3>transport/</h3>
+          <p>Native clients for each transport. Auto-configured from the agent card's <code>supportedInterfaces</code>.</p>
+        </div>
+        <div class="card">
+          <h3>scenarios/</h3>
+          <p>Gherkin feature files defining expected SUT behaviors. Drive the code generator for reference SUTs.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-number">4</div>
+  </div>
+
+  <!-- Slide 5: Requirement Levels -->
+  <div class="slide">
+    <h2>Requirement Levels (RFC 2119)</h2>
+    <p class="subtitle" style="font-size:20px;">Tests are organized by specification conformance level</p>
+    <table style="margin-bottom:32px;">
+      <tr>
+        <th>Level</th>
+        <th>Meaning</th>
+        <th>Test Behavior</th>
+        <th>Example IDs</th>
+      </tr>
+      <tr>
+        <td><span class="tag must">MUST</span></td>
+        <td>Absolute requirement</td>
+        <td>Hard failure if not met</td>
+        <td><code>CORE-SEND-001</code></td>
+      </tr>
+      <tr>
+        <td><span class="tag should">SHOULD</span></td>
+        <td>Expected unless valid reason to differ</td>
+        <td>Expected failure (<code>xfail</code>), does not block</td>
+        <td><code>CORE-EXECUTION-MODE-001</code></td>
+      </tr>
+      <tr>
+        <td><span class="tag may">MAY</span></td>
+        <td>Truly optional</td>
+        <td>Skipped if agent doesn't declare capability</td>
+        <td><code>CORE-STREAM-001</code></td>
+      </tr>
+    </table>
+    <div class="two-col">
+      <div class="highlight-card">
+        <p>Each requirement is a <code>RequirementSpec</code> with: ID, spec section, level, operation type, transport binding, sample input, expected behavior, and validators.</p>
+      </div>
+      <pre style="font-size:14px;"><code>RequirementSpec(
+    id="CORE-SEND-001",
+    section="3.1.1",
+    title="SendMessage returns Task or Message",
+    level=RequirementLevel.MUST,
+    operation=OperationType.SEND_MESSAGE,
+    binding=SEND_MESSAGE_BINDING,
+    expected_behavior=
+        "Response contains either a Task "
+        "object or a Message object",
+    sample_input={
+        "message": {
+            "role": "ROLE_USER",
+            "parts": [{"text": "Hello from TCK"}],
+            "messageId": tck_id("complete-task"),
+        },
+    },
+)</code></pre>
+    </div>
+    <div class="slide-number">5</div>
+  </div>
+
+  <!-- Slide 6: How Tests Work -->
+  <div class="slide">
+    <h2>How Tests Work</h2>
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+      <div class="diagram" style="justify-content:center; max-width:900px; margin:0 auto; gap:24px;">
+        <div class="flow-vertical">
+          <div class="box dark" style="min-width:180px;">Requirement<small>RequirementSpec</small></div>
+          <div class="arrow">&#9660;</div>
+          <div class="box" style="min-width:180px;">Dispatch<small>execute_operation()</small></div>
+          <div class="arrow">&#9660;</div>
+          <div style="display:flex; gap:12px;">
+            <div class="box" style="font-size:14px;">gRPC</div>
+            <div class="box" style="font-size:14px;">JSONRPC</div>
+            <div class="box" style="font-size:14px;">HTTP</div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-size:14px; color:var(--muted);">request</span>
+            <span class="arrow" style="font-size:48px;">&#10145;</span>
+          </div>
+          <div class="box green" style="min-width:180px; text-align:center;">SUT<small>processes request</small></div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span class="arrow" style="font-size:48px;">&#11013;</span>
+            <span style="font-size:14px; color:var(--muted);">response</span>
+          </div>
+        </div>
+        <div class="flow-vertical">
+          <div class="box dark" style="min-width:180px;">Validate<small>validators[]</small></div>
+          <div class="arrow">&#9660;</div>
+          <div class="box" style="min-width:180px; border-color:var(--secondary);">Record<small>compatibility_collector</small></div>
+          <div class="arrow">&#9660;</div>
+          <div class="box red" style="min-width:180px;">Report<small>JSON, HTML, JUnit</small></div>
+        </div>
+      </div>
+      <div style="margin-top:32px;">
+        <div class="highlight-card">
+          <p>Tests are <strong>parametrized</strong> across all transports. A single requirement definition runs once per transport client discovered from the agent card. Results are aggregated into compatibility reports per requirement and per transport.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-number">6</div>
+  </div>
+
+  <!-- Slide 7: The Scenario System -->
+  <div class="slide">
+    <h2>The Scenario System</h2>
+    <p class="subtitle" style="font-size:20px;">Gherkin features define SUT behavior -- no side-channel API needed</p>
+    <div class="two-col flex-1">
+      <div>
+        <pre style="font-size:15px;"><code>Feature: Core Operations
+
+  Scenario: Complete the task
+    When a message is received
+         with prefix "tck-complete-task"
+    Then complete the task
+         with the message "Hello from TCK"
+
+  Scenario: Task with text artifact
+    When a message is received
+         with prefix "tck-artifact-text"
+    Then complete the task
+    And add an artifact
+        with a text part "Generated text"
+
+  Scenario: Task requiring user input
+    When a message is received
+         with prefix "tck-input-required"
+    Then update the task status
+         to "input_required"</code></pre>
+      </div>
+      <div class="gap-16">
+        <div class="highlight-card">
+          <h3>In-band signaling</h3>
+          <p>The <code>messageId</code> prefix is the signal linking TCK tests to SUT behavior. The SUT matches the prefix and executes the corresponding scenario.</p>
+        </div>
+        <div class="highlight-card green">
+          <h3>Code generation</h3>
+          <p>The codegen system parses these Gherkin files and generates SUT implementations for multiple SDKs (Java/Quarkus with a2a-java, Python with a2a-python).</p>
+        </div>
+        <div class="card">
+          <h3>Two feature files</h3>
+          <ul>
+            <li><code>core_operations.feature</code> -- task lifecycle, artifacts, errors</li>
+            <li><code>streaming.feature</code> -- streaming events, resubscription</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="slide-number">7</div>
+  </div>
+
+  <!-- Slide 8: Reports -->
+  <div class="slide">
+    <h2>Compatibility Reports</h2>
+    <p class="subtitle" style="font-size:20px;">Generated automatically after every TCK run</p>
+    <div class="two-col flex-1">
+      <div>
+        <table>
+          <tr><th>Report</th><th>Format</th></tr>
+          <tr><td>Compatibility Summary</td><td><code>compatibility.json</code></td></tr>
+          <tr><td>Visual Report</td><td><code>compatibility.html</code></td></tr>
+          <tr><td>pytest Report</td><td><code>tck_report.html</code></td></tr>
+          <tr><td>CI Integration</td><td><code>junitreport.xml</code></td></tr>
+        </table>
+        <div class="highlight-card" style="margin-top:24px;">
+          <p>The JSON report contains per-requirement and per-transport breakdowns for programmatic analysis and CI gating.</p>
+        </div>
+      </div>
+      <div>
+        <pre style="font-size:15px;"><code>{
+  "summary": {
+    "total": 42,
+    "passed": 38,
+    "failed": 2,
+    "skipped": 2
+  },
+  "by_level": {
+    "MUST":   { "passed": 30, "failed": 1 },
+    "SHOULD": { "passed": 6,  "failed": 1 },
+    "MAY":    { "passed": 2,  "skipped": 2 }
+  },
+  "by_transport": {
+    "grpc":      { ... },
+    "jsonrpc":   { ... },
+    "http_json": { ... }
+  }
+}</code></pre>
+      </div>
+    </div>
+    <div class="slide-number">8</div>
+  </div>
+
+  <!-- Slide 9: What an SDK Must Do -->
+  <div class="slide">
+    <h2>What Your SDK Must Do</h2>
+    <p class="subtitle" style="font-size:20px;">To pass the TCK, your agent implementation needs these pieces</p>
+    <div class="three-col flex-1">
+      <div class="card">
+        <h3>1. Agent Card</h3>
+        <p>Serve a valid agent card at:</p>
+        <pre style="font-size:14px; margin-top:8px;"><code>GET /.well-known/agent-card.json</code></pre>
+        <ul style="margin-top:12px;">
+          <li>Declare <code>supportedInterfaces</code> with protocol bindings and URLs</li>
+          <li>Declare capabilities: streaming, push notifications, etc.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>2. Transport Endpoints</h3>
+        <p>Implement at least one transport:</p>
+        <ul>
+          <li><strong>gRPC</strong> -- proto service</li>
+          <li><strong>JSON-RPC</strong> -- JSON-RPC 2.0</li>
+          <li><strong>HTTP+JSON</strong> -- REST endpoints</li>
+        </ul>
+        <p style="margin-top:8px; font-size:16px; color:var(--muted);">TCK auto-detects transports from your agent card.</p>
+      </div>
+      <div class="card">
+        <h3>3. Scenario Executor</h3>
+        <p>Handle <code>messageId</code> prefixes from Gherkin scenarios:</p>
+        <ul>
+          <li><code>tck-complete-task</code></li>
+          <li><code>tck-artifact-*</code></li>
+          <li><code>tck-input-required</code></li>
+          <li><code>tck-stream-*</code></li>
+          <li>...and more</li>
+        </ul>
+      </div>
+    </div>
+    <div class="slide-number">9</div>
+  </div>
+
+  <!-- Slide 10: SUT Implementation Steps -->
+  <div class="slide">
+    <h2>Building Your SUT: Step by Step</h2>
+    <div style="flex:1;">
+      <ul class="step-list">
+        <li>
+          <strong>Read the Gherkin scenarios</strong> in <code>scenarios/</code><br>
+          <span style="color:var(--muted); font-size:18px;">These define every behavior the TCK will test. Each scenario ties a messageId prefix to an expected action.</span>
+        </li>
+        <li>
+          <strong>Implement an agent card endpoint</strong><br>
+          <span style="color:var(--muted); font-size:18px;">Serve <code>/.well-known/agent-card.json</code> with your supported interfaces, capabilities, input/output modes.</span>
+        </li>
+        <li>
+          <strong>Implement a message executor</strong> that dispatches on messageId prefix<br>
+          <span style="color:var(--muted); font-size:18px;">When the messageId starts with <code>tck-complete-task</code>, complete the task with "Hello from TCK", etc.</span>
+        </li>
+        <li>
+          <strong>Wire up transport endpoints</strong> using your SDK's framework<br>
+          <span style="color:var(--muted); font-size:18px;">The SDK handles protocol serialization. Your executor focuses on business logic.</span>
+        </li>
+        <li>
+          <strong>Run the TCK</strong>: <code>./run_tck.py --sut-host http://localhost:9999</code><br>
+          <span style="color:var(--muted); font-size:18px;">Fix failures iteratively. Start with <code>--level must</code> for mandatory requirements first.</span>
+        </li>
+      </ul>
+    </div>
+    <div class="slide-number">10</div>
+  </div>
+
+  <!-- Slide 11: Running the TCK -->
+  <div class="slide">
+    <h2>Running the TCK</h2>
+    <div class="two-col flex-1">
+      <div class="gap-16">
+        <div>
+          <h3 class="mb-16">Basic usage</h3>
+          <pre style="font-size:16px;"><code># Run all tests
+./run_tck.py --sut-host http://localhost:9999
+
+# Run only MUST requirements
+./run_tck.py --sut-host http://localhost:9999 \
+  --level must
+
+# Run a single transport
+./run_tck.py --sut-host http://localhost:9999 \
+  --transport grpc
+
+# Verbose with logs
+./run_tck.py --sut-host http://localhost:9999 \
+  --verbose-log</code></pre>
+        </div>
+      </div>
+      <div class="gap-16">
+        <div class="highlight-card">
+          <h3>Iterative approach</h3>
+          <p>Start with <code>--level must</code> to fix mandatory issues first, then <code>--level should</code>, then full suite.</p>
+        </div>
+        <div class="highlight-card green">
+          <h3>CI integration</h3>
+          <p>Use <code>junitreport.xml</code> for CI pipelines. Gate deployments on mandatory test results.</p>
+        </div>
+        <div class="card">
+          <h3>Reference SUTs</h3>
+          <pre style="font-size:14px;"><code># a2a-java (Quarkus)
+make codegen-a2a-java-sut
+cd sut/a2a-java
+mvn package && mvn quarkus:dev
+
+# a2a-python
+make codegen-a2a-python-sut
+cd sut/a2a-python
+uv sync && uv run python sut_agent.py
+
+# Test either SUT
+./run_tck.py --sut-host \
+  http://localhost:9999</code></pre>
+        </div>
+      </div>
+    </div>
+    <div class="slide-number">11</div>
+  </div>
+
+  <!-- Slide 12: Summary -->
+  <div class="slide title-slide">
+    <h1>Summary</h1>
+    <div style="text-align:left; max-width:700px; margin-top:32px;">
+      <div class="highlight-card mb-16">
+        <p><strong>The TCK is a black-box test suite</strong> that validates A2A protocol conformance across gRPC, JSON-RPC, and HTTP+JSON transports.</p>
+      </div>
+      <div class="highlight-card green mb-16">
+        <p><strong>Gherkin scenarios</strong> define SUT behaviors using messageId prefixes as in-band signals -- no side-channel API needed.</p>
+      </div>
+      <div class="highlight-card mb-16" style="border-left-color:#fbbc04;">
+        <p><strong>Your SDK needs:</strong> an agent card, transport endpoints, and a scenario executor that dispatches on messageId prefixes.</p>
+      </div>
+      <div class="highlight-card red">
+        <p><strong>Run iteratively:</strong> start with MUST requirements, fix failures, then expand to SHOULD and MAY levels.</p>
+      </div>
+    </div>
+    <p style="margin-top:40px; font-size:18px; color:var(--muted);">
+      <code>./run_tck.py --sut-host http://localhost:9999</code>
+    </p>
+    <div class="slide-number">12</div>
+  </div>
+
+</div>
+
+<div class="controls">
+  <button onclick="prev()">&#9664; Prev</button>
+  <button onclick="next()">Next &#9654;</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let current = 0;
+
+  function show(n) {
+    slides[current].classList.remove('active');
+    current = Math.max(0, Math.min(n, slides.length - 1));
+    slides[current].classList.add('active');
+  }
+
+  function next() { show(current + 1); }
+  function prev() { show(current - 1); }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+  });
+
+  // Touch support
+  let touchStartX = 0;
+  document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    const diff = touchStartX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) { diff > 0 ? next() : prev(); }
+  });
+</script>
+
+</body>
+</html>
