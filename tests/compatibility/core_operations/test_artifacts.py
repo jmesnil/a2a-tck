@@ -18,10 +18,10 @@ import pytest
 from tck.requirements.base import tck_id
 from tck.requirements.registry import get_requirement_by_id
 from tck.transport import ALL_TRANSPORTS
+from tck.validators import SEND_MESSAGE_RESPONSE
 from tck.validators.payload import (
     extract_artifacts,
     extract_message,
-    get_artifact_id,
     get_artifact_parts,
     get_part_data,
     get_part_filename,
@@ -71,6 +71,19 @@ def _send_and_get_response(
     return response
 
 
+def _validate_response_schema(
+    response: Any,
+    transport: str,
+    validators: dict[str, Any],
+) -> list[str]:
+    """Validate a SendMessage response against the schema."""
+    validator = validators.get(transport)
+    if validator is None:
+        return []
+    result = validator.validate(response.raw_response, SEND_MESSAGE_RESPONSE)
+    return result.errors if not result.valid else []
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -87,6 +100,7 @@ class TestTextArtifact:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """Response contains an artifact with a TextPart."""
         req = DM_ART_001
@@ -96,7 +110,9 @@ class TestTextArtifact:
         )
         response = _send_and_get_response(client, "artifact-text")
 
-        errors, part = validate_artifact_structure(response, transport, "text")
+        errors = _validate_response_schema(response, transport, validators)
+        struct_errors, part = validate_artifact_structure(response, transport, "text")
+        errors.extend(struct_errors)
         if part is not None:
             text = get_part_text(part, transport)
             if text != "Generated text content":
@@ -118,6 +134,7 @@ class TestFileArtifact:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """Response contains an artifact with a FilePart."""
         req = DM_ART_001
@@ -127,17 +144,12 @@ class TestFileArtifact:
         )
         response = _send_and_get_response(client, "artifact-file")
 
-        # File parts use "raw" (bytes) or "url" (string) content variant
-        errors: list[str] = []
+        errors = _validate_response_schema(response, transport, validators)
         artifacts = extract_artifacts(response, transport)
         if not artifacts:
             errors.append("Response contains no artifacts")
         else:
             artifact = artifacts[0]
-            aid = get_artifact_id(artifact, transport)
-            if not aid:
-                errors.append("Artifact is missing artifactId")
-
             parts = get_artifact_parts(artifact, transport)
             if not parts:
                 errors.append("Artifact has no parts")
@@ -173,6 +185,7 @@ class TestFileUrlArtifact:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """Response contains an artifact with a FilePart using a URL."""
         req = DM_ART_001
@@ -182,16 +195,12 @@ class TestFileUrlArtifact:
         )
         response = _send_and_get_response(client, "artifact-file-url")
 
-        errors: list[str] = []
+        errors = _validate_response_schema(response, transport, validators)
         artifacts = extract_artifacts(response, transport)
         if not artifacts:
             errors.append("Response contains no artifacts")
         else:
             artifact = artifacts[0]
-            aid = get_artifact_id(artifact, transport)
-            if not aid:
-                errors.append("Artifact is missing artifactId")
-
             parts = get_artifact_parts(artifact, transport)
             if not parts:
                 errors.append("Artifact has no parts")
@@ -227,6 +236,7 @@ class TestDataArtifact:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """Response contains an artifact with a DataPart."""
         req = DM_ART_001
@@ -236,7 +246,9 @@ class TestDataArtifact:
         )
         response = _send_and_get_response(client, "artifact-data")
 
-        errors, part = validate_artifact_structure(response, transport, "data")
+        errors = _validate_response_schema(response, transport, validators)
+        struct_errors, part = validate_artifact_structure(response, transport, "data")
+        errors.extend(struct_errors)
         if part is not None:
             data = get_part_data(part, transport)
             expected = {"key": "value", "count": 42}
@@ -259,6 +271,7 @@ class TestMessageResponse:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """Response is a Message with a TextPart."""
         req = DM_MSG_001
@@ -268,7 +281,7 @@ class TestMessageResponse:
         )
         response = _send_and_get_response(client, "message-response")
 
-        errors: list[str] = []
+        errors = _validate_response_schema(response, transport, validators)
         message = extract_message(response, transport)
         if message is None:
             errors.append(

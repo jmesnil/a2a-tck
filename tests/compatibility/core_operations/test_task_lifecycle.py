@@ -26,6 +26,7 @@ import pytest
 from tck.requirements.base import TERMINAL_STATES, tck_id
 from tck.requirements.registry import get_requirement_by_id
 from tck.transport import ALL_TRANSPORTS
+from tck.validators import SEND_MESSAGE_RESPONSE, STREAM_RESPONSE, TASK
 from tests.compatibility._task_helpers import create_completed_task, create_working_task
 from tests.compatibility._test_helpers import (
     assert_and_record,
@@ -68,6 +69,20 @@ _JSON_TERMINAL_STATES = frozenset(s.json_value for s in TERMINAL_STATES)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _validate_schema(
+    response: Any,
+    transport: str,
+    validators: dict[str, Any],
+    schema_ref: str,
+) -> list[str]:
+    """Validate a response against the given schema ref."""
+    validator = validators.get(transport)
+    if validator is None:
+        return []
+    result = validator.validate(response.raw_response, schema_ref)
+    return result.errors if not result.valid else []
 
 
 def _is_terminal_status(response: Any, transport: str) -> bool:
@@ -150,6 +165,7 @@ class TestGetTask:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """CORE-GET-001: GetTask returns the current state of an existing task."""
         req = CORE_GET_001
@@ -162,7 +178,7 @@ class TestGetTask:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
-            # Verify a task ID is present in the response
+            errors.extend(_validate_schema(response, transport, validators, TASK))
             returned_id = response.task_id
             if returned_id != info.task_id:
                 errors.append(
@@ -188,6 +204,7 @@ class TestCancelTask:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """CORE-CANCEL-001: CancelTask returns the task with updated state."""
         req = CORE_CANCEL_001
@@ -198,10 +215,9 @@ class TestCancelTask:
 
         errors: list[str] = []
         if not response.success:
-            # Server may reject if task already reached terminal state
-            # or cancellation is not supported — still valid behavior
             errors.append(f"CancelTask returned error: {response.error}")
         else:
+            errors.extend(_validate_schema(response, transport, validators, TASK))
             returned_id = response.task_id
             if returned_id != info.task_id:
                 errors.append(
@@ -292,6 +308,7 @@ class TestMultiTurn:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """CORE-MULTI-005: SendMessage with only taskId infers contextId from the task."""
         req = CORE_MULTI_005
@@ -312,9 +329,9 @@ class TestMultiTurn:
 
         errors: list[str] = []
         if not response.success:
-            # An error is acceptable if the task is already terminal
-            # but we still record it
             errors.append(f"SendMessage with taskId failed: {response.error}")
+        else:
+            errors.extend(_validate_schema(response, transport, validators, SEND_MESSAGE_RESPONSE))
 
         assert_and_record(compatibility_collector, req, transport, errors)
 
@@ -366,6 +383,7 @@ class TestSubscribeLifecycle:
         transport_clients: dict[str, BaseTransportClient],
         agent_card: dict[str, Any],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """STREAM-SUB-002: SubscribeToTask stream closes at terminal state."""
         req = STREAM_SUB_002
@@ -408,8 +426,13 @@ class TestSubscribeLifecycle:
         if not events:
             errors.append("SubscribeToTask returned no events")
         else:
-            # The stream closed (iterator exhausted), which means it
-            # terminated.  Verify the last event carries a terminal state.
+            validator = validators.get(transport)
+            if validator is not None:
+                for i, event in enumerate(events):
+                    result = validator.validate(event, STREAM_RESPONSE)
+                    if not result.valid:
+                        errors.extend(f"Event {i}: {e}" for e in result.errors)
+
             last = events[-1]
             last_is_terminal = _event_has_terminal_state(last, transport)
             if not last_is_terminal:

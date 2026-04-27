@@ -20,6 +20,7 @@ import pytest
 from tck.requirements.base import tck_id
 from tck.requirements.registry import get_requirement_by_id
 from tck.transport import ALL_TRANSPORTS
+from tck.validators import SEND_MESSAGE_RESPONSE, TASK
 from tck.validators.payload import extract_history, get_message_parts, get_part_text
 from tests.compatibility._task_helpers import (
     HISTORY_MESSAGES,
@@ -48,6 +49,25 @@ CORE_HIST_006 = get_requirement_by_id("CORE-HIST-006")
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _validate_schema(
+    response: Any,
+    transport: str,
+    validators: dict[str, Any],
+    schema_ref: str,
+) -> list[str]:
+    """Validate a response against the given schema ref."""
+    validator = validators.get(transport)
+    if validator is None:
+        return []
+    result = validator.validate(response.raw_response, schema_ref)
+    return result.errors if not result.valid else []
+
+
+# ---------------------------------------------------------------------------
 # GetTask history tests
 # ---------------------------------------------------------------------------
 
@@ -62,6 +82,7 @@ class TestHistoryLengthZeroGetTask:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """CORE-HIST-001: GetTask with historyLength=0 returns no history."""
         req = CORE_HIST_001
@@ -74,6 +95,7 @@ class TestHistoryLengthZeroGetTask:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
+            errors.extend(_validate_schema(response, transport, validators, TASK))
             history = extract_history(response, transport)
             if history:
                 errors.append(
@@ -97,6 +119,7 @@ class TestHistoryLengthLimit:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """CORE-HIST-002: GetTask history count must not exceed historyLength."""
         req = CORE_HIST_002
@@ -110,6 +133,7 @@ class TestHistoryLengthLimit:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
+            errors.extend(_validate_schema(response, transport, validators, TASK))
             history = extract_history(response, transport)
             if len(history) > requested_length:
                 errors.append(
@@ -135,6 +159,7 @@ class TestHistoryLengthZeroSendMessage:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """CORE-HIST-003: SendMessage with historyLength=0 returns no history."""
         req = CORE_HIST_003
@@ -158,6 +183,7 @@ class TestHistoryLengthZeroSendMessage:
         if not response.success:
             errors.append(f"SendMessage failed: {response.error}")
         else:
+            errors.extend(_validate_schema(response, transport, validators, SEND_MESSAGE_RESPONSE))
             history = extract_history(response, transport)
             if history:
                 errors.append(
@@ -186,6 +212,7 @@ class TestHistoryPersistence:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """CORE-HIST-004: GetTask with historyLength>0 may return persisted messages."""
         req = CORE_HIST_004
@@ -198,6 +225,7 @@ class TestHistoryPersistence:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
+            errors.extend(_validate_schema(response, transport, validators, TASK))
             history = extract_history(response, transport)
             if not history:
                 errors.append(
@@ -240,6 +268,7 @@ class TestHistoryOrdering:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """CORE-HIST-005: History messages should be in chronological order."""
         req = CORE_HIST_005
@@ -252,6 +281,7 @@ class TestHistoryOrdering:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
+            errors.extend(_validate_schema(response, transport, validators, TASK))
             history = extract_history(response, transport)
             if len(history) < _MIN_HISTORY_FOR_ORDERING:
                 errors.append(
@@ -288,6 +318,7 @@ class TestHistoryContent:
         transport: str,
         transport_clients: dict[str, BaseTransportClient],
         compatibility_collector: Any,
+        validators: dict[str, Any],
     ) -> None:
         """CORE-HIST-006: History content should match exchanged messages."""
         req = CORE_HIST_006
@@ -300,6 +331,7 @@ class TestHistoryContent:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
+            errors.extend(_validate_schema(response, transport, validators, TASK))
             history = extract_history(response, transport)
             if not history:
                 errors.append(
