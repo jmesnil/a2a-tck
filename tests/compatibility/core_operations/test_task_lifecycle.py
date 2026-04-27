@@ -33,6 +33,8 @@ from tests.compatibility._test_helpers import (
     collect_events_with_timeout,
     get_client,
     record,
+    validate_schema,
+    validate_streaming_events,
 )
 from tests.compatibility.markers import must, streaming
 
@@ -69,20 +71,6 @@ _JSON_TERMINAL_STATES = frozenset(s.json_value for s in TERMINAL_STATES)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _validate_schema(
-    response: Any,
-    transport: str,
-    validators: dict[str, Any],
-    schema_ref: str,
-) -> list[str]:
-    """Validate a response against the given schema ref."""
-    validator = validators.get(transport)
-    if validator is None:
-        return []
-    result = validator.validate(response.raw_response, schema_ref)
-    return result.errors if not result.valid else []
 
 
 def _is_terminal_status(response: Any, transport: str) -> bool:
@@ -178,7 +166,7 @@ class TestGetTask:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
-            errors.extend(_validate_schema(response, transport, validators, TASK))
+            errors.extend(validate_schema(response, transport, validators,TASK))
             returned_id = response.task_id
             if returned_id != info.task_id:
                 errors.append(
@@ -217,7 +205,7 @@ class TestCancelTask:
         if not response.success:
             errors.append(f"CancelTask returned error: {response.error}")
         else:
-            errors.extend(_validate_schema(response, transport, validators, TASK))
+            errors.extend(validate_schema(response, transport, validators,TASK))
             returned_id = response.task_id
             if returned_id != info.task_id:
                 errors.append(
@@ -331,7 +319,7 @@ class TestMultiTurn:
         if not response.success:
             errors.append(f"SendMessage with taskId failed: {response.error}")
         else:
-            errors.extend(_validate_schema(response, transport, validators, SEND_MESSAGE_RESPONSE))
+            errors.extend(validate_schema(response, transport, validators,SEND_MESSAGE_RESPONSE))
 
         assert_and_record(compatibility_collector, req, transport, errors)
 
@@ -426,12 +414,7 @@ class TestSubscribeLifecycle:
         if not events:
             errors.append("SubscribeToTask returned no events")
         else:
-            validator = validators.get(transport)
-            if validator is not None:
-                for i, event in enumerate(events):
-                    result = validator.validate(event, STREAM_RESPONSE)
-                    if not result.valid:
-                        errors.extend(f"Event {i}: {e}" for e in result.errors)
+            errors.extend(validate_streaming_events(events, transport, validators, STREAM_RESPONSE))
 
             last = events[-1]
             last_is_terminal = _event_has_terminal_state(last, transport)

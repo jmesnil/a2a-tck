@@ -108,3 +108,58 @@ def collect_events_with_timeout(
     thread.join(timeout=timeout)
     timed_out = thread.is_alive()
     return collected, timed_out
+
+
+def validate_schema(
+    response: Any,
+    transport: str,
+    validators: dict[str, Any],
+    schema_ref: str,
+) -> list[str]:
+    """Validate a transport response against a schema definition.
+
+    Args:
+        response: Transport response with a ``raw_response`` attribute.
+        transport: Transport name (``"grpc"``, ``"jsonrpc"``, ``"http_json"``).
+        validators: Dict of validators keyed by transport name.
+        schema_ref: Schema reference constant (e.g. ``TASK``, ``SEND_MESSAGE_RESPONSE``).
+
+    Returns:
+        A list of error strings (empty if valid).
+    """
+    validator = validators.get(transport)
+    if validator is None:
+        return []
+    result = validator.validate(response.raw_response, schema_ref)
+    return result.errors if not result.valid else []
+
+
+def validate_streaming_events(
+    events: list[Any],
+    transport: str,
+    validators: dict[str, Any],
+    schema_ref: str,
+    *,
+    prefix: str = "Event",
+) -> list[str]:
+    """Validate a list of streaming events against a schema definition.
+
+    Args:
+        events: List of streaming events (proto messages or dicts).
+        transport: Transport name.
+        validators: Dict of validators keyed by transport name.
+        schema_ref: Schema reference constant (e.g. ``STREAM_RESPONSE``).
+        prefix: Label prefix for error messages (e.g. ``"Stream 0 event"``).
+
+    Returns:
+        A list of error strings (empty if all events are valid).
+    """
+    validator = validators.get(transport)
+    if validator is None:
+        return []
+    errors: list[str] = []
+    for i, event in enumerate(events):
+        result = validator.validate(event, schema_ref)
+        if not result.valid:
+            errors.extend(f"{prefix} {i}: {e}" for e in result.errors)
+    return errors

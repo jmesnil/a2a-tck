@@ -28,7 +28,7 @@ from tests.compatibility._task_helpers import (
     create_multiturn_task_with_history,
     create_working_task,
 )
-from tests.compatibility._test_helpers import assert_and_record, fail_msg, get_client, record
+from tests.compatibility._test_helpers import assert_and_record, fail_msg, get_client, record, validate_schema
 from tests.compatibility.markers import may, must, should
 
 
@@ -46,25 +46,6 @@ CORE_HIST_003 = get_requirement_by_id("CORE-HIST-003")
 CORE_HIST_004 = get_requirement_by_id("CORE-HIST-004")
 CORE_HIST_005 = get_requirement_by_id("CORE-HIST-005")
 CORE_HIST_006 = get_requirement_by_id("CORE-HIST-006")
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _validate_schema(
-    response: Any,
-    transport: str,
-    validators: dict[str, Any],
-    schema_ref: str,
-) -> list[str]:
-    """Validate a response against the given schema ref."""
-    validator = validators.get(transport)
-    if validator is None:
-        return []
-    result = validator.validate(response.raw_response, schema_ref)
-    return result.errors if not result.valid else []
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +76,7 @@ class TestHistoryLengthZeroGetTask:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
-            errors.extend(_validate_schema(response, transport, validators, TASK))
+            errors.extend(validate_schema(response, transport, validators, TASK))
             history = extract_history(response, transport)
             if history:
                 errors.append(
@@ -133,7 +114,7 @@ class TestHistoryLengthLimit:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
-            errors.extend(_validate_schema(response, transport, validators, TASK))
+            errors.extend(validate_schema(response, transport, validators, TASK))
             history = extract_history(response, transport)
             if len(history) > requested_length:
                 errors.append(
@@ -183,7 +164,7 @@ class TestHistoryLengthZeroSendMessage:
         if not response.success:
             errors.append(f"SendMessage failed: {response.error}")
         else:
-            errors.extend(_validate_schema(response, transport, validators, SEND_MESSAGE_RESPONSE))
+            errors.extend(validate_schema(response, transport, validators, SEND_MESSAGE_RESPONSE))
             history = extract_history(response, transport)
             if history:
                 errors.append(
@@ -225,7 +206,7 @@ class TestHistoryPersistence:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
-            errors.extend(_validate_schema(response, transport, validators, TASK))
+            errors.extend(validate_schema(response, transport, validators, TASK))
             history = extract_history(response, transport)
             if not history:
                 errors.append(
@@ -281,7 +262,7 @@ class TestHistoryOrdering:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
-            errors.extend(_validate_schema(response, transport, validators, TASK))
+            errors.extend(validate_schema(response, transport, validators, TASK))
             history = extract_history(response, transport)
             if len(history) < _MIN_HISTORY_FOR_ORDERING:
                 errors.append(
@@ -331,7 +312,7 @@ class TestHistoryContent:
         if not response.success:
             errors.append(f"GetTask failed: {response.error}")
         else:
-            errors.extend(_validate_schema(response, transport, validators, TASK))
+            errors.extend(validate_schema(response, transport, validators, TASK))
             history = extract_history(response, transport)
             if not history:
                 errors.append(

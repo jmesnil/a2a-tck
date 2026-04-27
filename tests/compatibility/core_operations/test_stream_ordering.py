@@ -27,7 +27,7 @@ from tck.requirements.base import (
 from tck.requirements.registry import get_requirement_by_id
 from tck.transport import ALL_TRANSPORTS
 from tck.validators import STREAM_RESPONSE
-from tests.compatibility._test_helpers import assert_and_record, get_client, record
+from tests.compatibility._test_helpers import assert_and_record, get_client, record, validate_streaming_events
 from tests.compatibility.markers import must, streaming
 
 
@@ -200,10 +200,6 @@ class TestStreamEventOrdering:
         get_state = _get_event_state_grpc if transport == "grpc" else _get_event_state_json
         errors = _check_ordering(events, get_state)
 
-        validator = validators[transport]
-        for i, event in enumerate(events):
-            result = validator.validate(event, STREAM_RESPONSE)
-            if not result.valid:
-                errors.extend(f"Event {i}: {e}" for e in result.errors)
+        errors.extend(validate_streaming_events(events, transport, validators, STREAM_RESPONSE))
 
         assert_and_record(compatibility_collector, req, transport, errors)

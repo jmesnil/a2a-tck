@@ -30,7 +30,7 @@ from tck.validators.payload import (
     get_part_type,
     validate_artifact_structure,
 )
-from tests.compatibility._test_helpers import assert_and_record, get_client
+from tests.compatibility._test_helpers import assert_and_record, get_client, validate_schema
 from tests.compatibility.markers import core, must
 
 
@@ -71,19 +71,6 @@ def _send_and_get_response(
     return response
 
 
-def _validate_response_schema(
-    response: Any,
-    transport: str,
-    validators: dict[str, Any],
-) -> list[str]:
-    """Validate a SendMessage response against the schema."""
-    validator = validators.get(transport)
-    if validator is None:
-        return []
-    result = validator.validate(response.raw_response, SEND_MESSAGE_RESPONSE)
-    return result.errors if not result.valid else []
-
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -110,7 +97,7 @@ class TestTextArtifact:
         )
         response = _send_and_get_response(client, "artifact-text")
 
-        errors = _validate_response_schema(response, transport, validators)
+        errors = validate_schema(response, transport, validators, SEND_MESSAGE_RESPONSE)
         struct_errors, part = validate_artifact_structure(response, transport, "text")
         errors.extend(struct_errors)
         if part is not None:
@@ -144,7 +131,7 @@ class TestFileArtifact:
         )
         response = _send_and_get_response(client, "artifact-file")
 
-        errors = _validate_response_schema(response, transport, validators)
+        errors = validate_schema(response, transport, validators, SEND_MESSAGE_RESPONSE)
         artifacts = extract_artifacts(response, transport)
         if not artifacts:
             errors.append("Response contains no artifacts")
@@ -195,7 +182,7 @@ class TestFileUrlArtifact:
         )
         response = _send_and_get_response(client, "artifact-file-url")
 
-        errors = _validate_response_schema(response, transport, validators)
+        errors = validate_schema(response, transport, validators, SEND_MESSAGE_RESPONSE)
         artifacts = extract_artifacts(response, transport)
         if not artifacts:
             errors.append("Response contains no artifacts")
@@ -246,7 +233,7 @@ class TestDataArtifact:
         )
         response = _send_and_get_response(client, "artifact-data")
 
-        errors = _validate_response_schema(response, transport, validators)
+        errors = validate_schema(response, transport, validators, SEND_MESSAGE_RESPONSE)
         struct_errors, part = validate_artifact_structure(response, transport, "data")
         errors.extend(struct_errors)
         if part is not None:
@@ -281,7 +268,7 @@ class TestMessageResponse:
         )
         response = _send_and_get_response(client, "message-response")
 
-        errors = _validate_response_schema(response, transport, validators)
+        errors = validate_schema(response, transport, validators, SEND_MESSAGE_RESPONSE)
         message = extract_message(response, transport)
         if message is None:
             errors.append(

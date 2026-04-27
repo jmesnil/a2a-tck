@@ -29,6 +29,7 @@ from tests.compatibility._test_helpers import (
     collect_events_with_timeout,
     get_client,
     record,
+    validate_streaming_events,
 )
 from tests.compatibility.markers import must, streaming
 
@@ -160,15 +161,14 @@ class TestMultiStreamOrdering:
         event_lists = _subscribe_parallel(client, info.task_id, n=2)
 
         errors: list[str] = []
-        validator = validators.get(transport)
         for i, events in enumerate(event_lists):
             if not events:
                 errors.append(f"Stream {i} received no events")
-            elif validator is not None:
-                for j, event in enumerate(events):
-                    result = validator.validate(event, STREAM_RESPONSE)
-                    if not result.valid:
-                        errors.extend(f"Stream {i} event {j}: {e}" for e in result.errors)
+            else:
+                errors.extend(validate_streaming_events(
+                    events, transport, validators, STREAM_RESPONSE,
+                    prefix=f"Stream {i} event",
+                ))
 
         assert_and_record(compatibility_collector, req, transport, errors)
 
@@ -202,13 +202,11 @@ class TestMultiStreamOrdering:
                 "one stream received nothing"
             )
         else:
-            validator = validators.get(transport)
             for s, events in enumerate(event_lists):
-                if validator is not None:
-                    for j, event in enumerate(events):
-                        result = validator.validate(event, STREAM_RESPONSE)
-                        if not result.valid:
-                            errors.extend(f"Stream {s} event {j}: {e}" for e in result.errors)
+                errors.extend(validate_streaming_events(
+                    events, transport, validators, STREAM_RESPONSE,
+                    prefix=f"Stream {s} event",
+                ))
 
             normalized_0 = [_normalize_event(e) for e in event_lists[0]]
             normalized_1 = [_normalize_event(e) for e in event_lists[1]]
@@ -254,12 +252,10 @@ class TestMultiStreamOrdering:
         if not event_lists[1]:
             errors.append("Stream 1 received no events after stream 0 was closed")
 
-        validator = validators.get(transport)
-        if validator is not None:
-            for i, events in enumerate(event_lists):
-                for j, event in enumerate(events):
-                    result = validator.validate(event, STREAM_RESPONSE)
-                    if not result.valid:
-                        errors.extend(f"Stream {i} event {j}: {e}" for e in result.errors)
+        for i, events in enumerate(event_lists):
+            errors.extend(validate_streaming_events(
+                events, transport, validators, STREAM_RESPONSE,
+                prefix=f"Stream {i} event",
+            ))
 
         assert_and_record(compatibility_collector, req, transport, errors)

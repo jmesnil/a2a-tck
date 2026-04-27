@@ -20,7 +20,7 @@ from tck.requirements.registry import get_requirement_by_id
 from tck.transport.jsonrpc_client import TRANSPORT
 from tck.validators import STREAM_RESPONSE
 from tests.compatibility._task_helpers import create_working_task
-from tests.compatibility._test_helpers import assert_and_record, get_client, record
+from tests.compatibility._test_helpers import assert_and_record, get_client, record, validate_streaming_events
 from tests.compatibility.markers import jsonrpc, must, streaming
 
 
@@ -140,11 +140,9 @@ class TestSseStreamingFormat:
         events = _get_streaming_events(client, agent_card)
 
         errors: list[str] = []
-        validator = validators[transport]
         for i, event in enumerate(events):
             result = event.get("result")
             if result is None:
-                # Error events are acceptable (validated elsewhere)
                 if "error" not in event:
                     errors.append(f"Event {i}: no 'result' or 'error' field")
                 continue
@@ -154,9 +152,7 @@ class TestSseStreamingFormat:
                     f"Event {i}: result has none of {sorted(_STREAM_RESPONSE_KEYS)}, "
                     f"got keys {sorted(result.keys())}"
                 )
-            validation = validator.validate(event, STREAM_RESPONSE)
-            if not validation.valid:
-                errors.extend(f"Event {i}: {e}" for e in validation.errors)
+        errors.extend(validate_streaming_events(events, transport, validators, STREAM_RESPONSE))
 
         assert_and_record(compatibility_collector, req, transport, errors)
 
